@@ -3,6 +3,7 @@ module SHA256 where
 import Prelude hiding ((/),round)
 import CLasH.HardwareTypes
 import Text.Printf
+import Data.Char
 
 type Int32 = Unsigned D32
 type Int8 = Unsigned D8
@@ -186,6 +187,20 @@ digest := hash := h0 append h1 append h2 append h3 append h4 append h5 append h6
 
 out (x0,x1,x2,x3,x4,x5,x6,x7) = concat $ map i32To8s [x0,x1,x2,x3,x4,x5,x6,x7]
 
+showHex :: [Int8] -> String
+showHex = concat . map ((printf "%02x") . toInteger)
 
-showState = map (((printf "%2x") :: Integer -> String) . toInteger) . out
+showState :: Sha256State -> String
+showState = showHex . out
+
+fromString :: String -> [Int8]
+fromString = map (fromIntegral . ord)
+
+sha256 :: String -> [Int8]
+sha256 xs = out $ processChunks state0 cs
+  where
+    cs = makeChunks32' $ pad $ fromString xs
+
+sha256str = showHex . sha256
+
 
