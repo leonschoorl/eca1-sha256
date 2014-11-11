@@ -12,10 +12,10 @@ import Data.Char
 (/) = div
 
 state0 :: Sha256State
-state0 = $(v[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19::Int32])
+state0 = vreverse $(v[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19::Int32])
 
 ks :: Vec 64 Int32
-ks = $(v[
+ks = vreverse $(v[
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
   0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
@@ -123,14 +123,15 @@ for i from 16 to 63
 -}
 
     processChunk :: Sha256State -> Chunk -> Sha256State
-    processChunk state xs = vfoldl round state wks
+    processChunk state xs = vfoldr (flip round) state wks
       where
         wks = vzipWith (+) ws ks
         ws = genMesgSched xs
 
 genMesgSched :: Chunk -> Vec 64 Int32
 genMesgSched xs = ws where
-  ws = xs <++> (snd $ vmapAccumL (\a x -> let a' = updateMesgSched a in (a', vhead a')) xs (vcopy d48 undefined))
+  ws = (vreverse wExtended) <++> xs
+  wExtended = (snd $ vmapAccumL (\a x -> let a' = updateMesgSched a in (a', vhead a')) xs (vcopy d48 undefined))
 
 updateMesgSched :: Vec 16 Int32 -> Vec 16 Int32
 updateMesgSched ws = w16 +>> ws
@@ -141,7 +142,7 @@ updateMesgSched ws = w16 +>> ws
     s1  = (w2  `rotateR` 17)  `xor`  (w2  `rotateR` 19)  `xor`  (w2  `shiftR` 10)
     w16 = ws ! (16-16) + s0 + ws ! (16-7) + s1
 {-
-Initialize working variables txo current hash value:
+Initialize working variables to current hash value:
 a := h0
 b := h1
 c := h2
@@ -170,7 +171,7 @@ for i from 0 to 63
 -}
 round :: Sha256State -> Int32 -> Sha256State
 --round state wk = unsafeVector d8 [a',a,b,c,e',e,f,g]
-round state wk = vreplace (a' +>> state) 4 e'
+round state wk = vreplace (state <<+ a') 4 e'
   where
     a = state ! 0
     b = state ! 1
@@ -208,15 +209,16 @@ digest := hash := h0 append h1 append h2 append h3 append h4 append h5 append h6
 -}
 
 out :: Sha256State -> Vec 32 Int8
-out xs = vconcat $ vmap i32To8s xs
+out xs = vconcat $ vmap i32To8s $ vreverse xs
 
 showHex :: Vec 32 Int8 -> String
 showHex = vfoldl (++) "" . vmap ((printf "%02x" ) . toInteger)
 
-{-
 showState :: Sha256State -> String
-showState = showHex . out
--}
+--showState = showHex . out
+showState = tail . vfoldl1 (++) . hexInt32 . vreverse
+
+hexInt32 s = vmap (printf " %08x" . toInteger :: Int32 -> String) s
 
 fromString :: String -> [Int8]
 fromString = map (fromIntegral . ord)
@@ -258,7 +260,8 @@ f xs = ws
 -}
 
 padState :: Sha256State -> Chunk
-padState xs = xs <++> ((1 `shiftL` 31) :> vcopy (d6) 0) <++> 256:>Nil
+padState xs =  256 :> vcopy d6 0 <++> (1 `shiftL` 31) :> Nil <++> xs
+
 
 hex2bin :: String -> [Int8]
 hex2bin [] = []
@@ -270,7 +273,7 @@ Block 125552
 -}
 bin = hex2bin ("01000000" ++ "81cd02ab7e569e8bcd9317e2fe99f2de44d49ab2b8851ba4a308000000000000" ++ "e320b6c2fffc8d750423db8b1eb942ae710e951ed797f7affc8892b0f1fc122b" ++ "c7f5d74d" ++ "f2b9441a" ++ "42a14695")
 
-demo = showHex $ out $ processChunks state0 [padState $ processChunks state0 $ map (unsafeVector16) $ makeChunks32' $ pad bin]
+demo = showHex $ vreverse $ out $ processChunks state0 [padState $ processChunks state0 $ map (unsafeVector16) $ makeChunks32' $ pad bin]
 
-unsafeVector16 (x0:x1:x2:x3:x4:x5:x6:x7:x8:x9:x10:x11:x12:x13:x14:x15:[]) = x0:>x1:>x2:>x3:>x4:>x5:>x6:>x7:>x8:>x9:>x10:>x11:>x12:>x13:>x14:>x15:>Nil
+unsafeVector16 (x0:x1:x2:x3:x4:x5:x6:x7:x8:x9:x10:x11:x12:x13:x14:x15:[]) = vreverse $ x0:>x1:>x2:>x3:>x4:>x5:>x6:>x7:>x8:>x9:>x10:>x11:>x12:>x13:>x14:>x15:>Nil
 
