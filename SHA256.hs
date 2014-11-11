@@ -1,21 +1,21 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DataKinds       #-}
+
 module SHA256 where
 
+import Types
 import Prelude hiding ((/),round)
-import CLasH.HardwareTypes
+import CLaSH.Prelude
 import Text.Printf
 import Data.Char
-
-type Int32 = Unsigned D32
-type Int8 = Unsigned D8
 
 (/) = div
 
 state0 :: Sha256State
-state0 = $(vTH[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19::Int32])
+state0 = $(v[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19::Int32])
 
-ks :: Vector D64 Int32
-ks = $(vTH[
+ks :: Vec 64 Int32
+ks = $(v[
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
   0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
@@ -31,45 +31,45 @@ pad xs = xs ++ bit 7 : replicate padN 0 ++ lBytes
   where
     l = length xs
     padN = (64 - (l + 8 + 1)) `mod` 64
-    l64 = (fromIntegral (l*8)) :: Unsigned D64
-    lBv = u2bv l64
+    l64 = (fromIntegral (l*8)) :: Unsigned 64
+    lBv = toBV l64
     lBvs = [vselect  d0 d1 d8 lBv, vselect d8  d1 d8 lBv, vselect d16 d1 d8 lBv, vselect d24 d1 d8 lBv
            ,vselect d32 d1 d8 lBv, vselect d40 d1 d8 lBv, vselect d48 d1 d8 lBv, vselect d56 d1 d8 lBv]
-    lBytes = map bv2u lBvs
+    lBytes = map fromBV lBvs
 
 -- little endian
 i8sTo32le :: [Int8] -> Int32
 i8sTo32le [x0,x1,x2,x3] = x0' + shiftL x1' 8 + shiftL x2' 16 + shiftL x3' 24
   where
-    x0' = resizeUnsigned x0
-    x1' = resizeUnsigned x1
-    x2' = resizeUnsigned x2
-    x3' = resizeUnsigned x3
+    x0' = resize x0
+    x1' = resize x1
+    x2' = resize x2
+    x3' = resize x3
 
 i32To8sle :: Int32 -> [Int8]
 i32To8sle x = [x0,x1,x2,x3]
   where
-    x0 = resizeUnsigned $ m0 .&.  x
-    x1 = resizeUnsigned $ m0 .&. (x `shiftR` 8)
-    x2 = resizeUnsigned $ m0 .&. (x `shiftR` 16)
-    x3 = resizeUnsigned $ m0 .&. (x `shiftR` 24)
+    x0 = resize $ m0 .&.  x
+    x1 = resize $ m0 .&. (x `shiftR` 8)
+    x2 = resize $ m0 .&. (x `shiftR` 16)
+    x3 = resize $ m0 .&. (x `shiftR` 24)
 
 -- big endian
-i8sTo32be :: Vector D4 Int8 -> Int32
+i8sTo32be :: Vec 4 Int8 -> Int32
 i8sTo32be xs = x0' + shiftL x1' 8 + shiftL x2' 16 + shiftL x3' 24
   where
-    x0' = resizeUnsigned $ xs ! 3
-    x1' = resizeUnsigned $ xs ! 2
-    x2' = resizeUnsigned $ xs ! 1
-    x3' = resizeUnsigned $ xs ! 0
+    x0' = resize $ xs ! 3
+    x1' = resize $ xs ! 2
+    x2' = resize $ xs ! 1
+    x3' = resize $ xs ! 0
 
-i32To8sbe :: Int32 -> Vector D4 Int8
-i32To8sbe x = x3 +> (x2 +> (x1 +> (singleton x0)))
+i32To8sbe :: Int32 -> Vec 4 Int8
+i32To8sbe x = x3 :> x2 :> x1 :> x0 :> Nil
   where
-    x0 = resizeUnsigned $ m0 .&.  x
-    x1 = resizeUnsigned $ m0 .&. (x `shiftR` 8)
-    x2 = resizeUnsigned $ m0 .&. (x `shiftR` 16)
-    x3 = resizeUnsigned $ m0 .&. (x `shiftR` 24)
+    x0 = resize $ m0 .&.  x
+    x1 = resize $ m0 .&. (x `shiftR` 8)
+    x2 = resize $ m0 .&. (x `shiftR` 16)
+    x3 = resize $ m0 .&. (x `shiftR` 24)
 
 i8sTo32 = i8sTo32be
 i32To8s = i32To8sbe
@@ -92,7 +92,7 @@ makeChunks32 :: [Int8] -> [[Int32]]
 makeChunks32 xs = map (map i8sTo32) (map (unsafeVector d4 . group4) $ makeChunks xs)
 -}
 group4' [] = []
-group4' (x0:x1:x2:x3 : xs) = i8sTo32 (unsafeVector d4 [x0,x1,x2,x3]) : group4' xs
+group4' (x0:x1:x2:x3 : xs) = i8sTo32 (x3 :> x2 :> x1 :> x0 :> Nil) : group4' xs
 
 makeChunks32' :: [Int8] -> [[Int32]]
 makeChunks32' xs = (map group4' $ makeChunks xs)
@@ -103,8 +103,8 @@ makeChunk [] = []
 makeChunk [x0,x1,x2,x3, x4,x5,x6,x7, x8,x9,x10,x11] = undefined
 -}
 
-type Sha256State = Vector D8 Int32
-type Chunk = Vector D16 Int32
+type Sha256State = Vec 8 Int32
+type Chunk = Vec 16 Int32
 
 processChunks :: Sha256State -> [Chunk] -> Sha256State
 processChunks hs [] = hs
@@ -126,13 +126,20 @@ for i from 16 to 63
     processChunk state xs = vfoldl round state wks
       where
         wks = vzipWith (+) ws ks
-        ws = xs <++> (unsafeVector d48 [let w15 = ws ! (i-15)
-                                            w2  = ws ! (i-2)
-                                            s0  = (w15 `rotateR`  7)  `xor`  (w15 `rotateR` 18)  `xor`  (w15 `shiftR`  3)
-                                            s1  = (w2  `rotateR` 17)  `xor`  (w2  `rotateR` 19)  `xor`  (w2  `shiftR` 10)
-                     in ws ! (i-16) + s0 + ws ! (i-7) + s1 | i <- [16..63]])
+        ws = genMesgSched xs
 
+genMesgSched :: Chunk -> Vec 64 Int32
+genMesgSched xs = ws where
+  ws = xs <++> (snd $ vmapAccumL (\a x -> let a' = updateMesgSched a in (a', vhead a')) xs (vcopy d48 undefined))
 
+updateMesgSched :: Vec 16 Int32 -> Vec 16 Int32
+updateMesgSched ws = w16 +>> ws
+  where
+    w15 = ws ! (16-15)
+    w2  = ws ! (16-2)
+    s0  = (w15 `rotateR`  7)  `xor`  (w15 `rotateR` 18)  `xor`  (w15 `shiftR`  3)
+    s1  = (w2  `rotateR` 17)  `xor`  (w2  `rotateR` 19)  `xor`  (w2  `shiftR` 10)
+    w16 = ws ! (16-16) + s0 + ws ! (16-7) + s1
 {-
 Initialize working variables txo current hash value:
 a := h0
@@ -200,10 +207,10 @@ Produce the final hash value (big-endian):
 digest := hash := h0 append h1 append h2 append h3 append h4 append h5 append h6 append h7
 -}
 
-out :: Sha256State -> Vector D32 Int8
+out :: Sha256State -> Vec 32 Int8
 out xs = vconcat $ vmap i32To8s xs
 
-showHex :: Vector D32 Int8 -> String
+showHex :: Vec 32 Int8 -> String
 showHex = vfoldl (++) "" . vmap ((printf "%02x" ) . toInteger)
 
 {-
@@ -222,8 +229,8 @@ sha256 xs = out $ processChunks state0 cs
 sha256str = showHex . sha256
 -}
 
-msgSched :: State (Vector D16 Int32) -> () -> (State (Vector D16 Int32), Int32)
-msgSched (State ws) () = (State ws', out)
+msgSched :: {-State-} (Vec 16 Int32) -> () -> ({-State-} (Vec 16 Int32), Int32)
+msgSched ({-State-} ws) () = ({-State-} ws', out)
   where
     out = vhead ws
     ws' = ws <<+ wj
@@ -240,7 +247,7 @@ msgSched (State ws) () = (State ws', out)
                                         s1  = (w2  `rotateR` 17)  `xor`  (w2  `rotateR` 19)  `xor`  (w2  `shiftR` 10)
                  in ws ! (i-16) + s0 + ws ! (i-7) + s1 | i <- [16..63]])
 -}
-
+{-
 f xs = ws
   where
     ws = xs <++> (unsafeVector d48 [let w15 = ws ! (i-15)
@@ -248,19 +255,22 @@ f xs = ws
                                         s0  = (w15 `rotateR`  7)  `xor`  (w15 `rotateR` 18)  `xor`  (w15 `shiftR`  3)
                                         s1  = (w2  `rotateR` 17)  `xor`  (w2  `rotateR` 19)  `xor`  (w2  `shiftR` 10)
                  in ws ! (i-16) + s0 + ws ! (i-7) + s1 | i <- [16..63]])
-
+-}
 
 padState :: Sha256State -> Chunk
-padState xs = xs <++> ((1 `shiftL` 31) +> vcopyn (d6) 0) <++> singleton 256
+padState xs = xs <++> ((1 `shiftL` 31) :> vcopy (d6) 0) <++> 256:>Nil
 
 hex2bin :: String -> [Int8]
 hex2bin [] = []
-hex2bin (x1:x2:xs) = read ("0x" ++ [x1,x2]) : hex2bin xs
-
+hex2bin (x1:x2:xs) = myread ("0x" ++ [x1,x2]) : hex2bin xs
+  where
+    myread = fromInteger . read
 {-
 Block 125552
 -}
 bin = hex2bin ("01000000" ++ "81cd02ab7e569e8bcd9317e2fe99f2de44d49ab2b8851ba4a308000000000000" ++ "e320b6c2fffc8d750423db8b1eb942ae710e951ed797f7affc8892b0f1fc122b" ++ "c7f5d74d" ++ "f2b9441a" ++ "42a14695")
 
-demo = showHex $ out $ processChunks state0 [padState $ processChunks state0 $ map (unsafeVector d16) $ makeChunks32' $ pad bin]
+demo = showHex $ out $ processChunks state0 [padState $ processChunks state0 $ map (unsafeVector16) $ makeChunks32' $ pad bin]
+
+unsafeVector16 (x0:x1:x2:x3:x4:x5:x6:x7:x8:x9:x10:x11:x12:x13:x14:x15:[]) = x0:>x1:>x2:>x3:>x4:>x5:>x6:>x7:>x8:>x9:>x10:>x11:>x12:>x13:>x14:>x15:>Nil
 
